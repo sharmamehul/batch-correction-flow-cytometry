@@ -1,0 +1,91 @@
+---
+title: "Batch_correct_flow"
+author: "Mehul"
+date: "22/05/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+suppressPackageStartupMessages(library(CytoNorm))
+suppressPackageStartupMessages(library(cytutils))
+suppressPackageStartupMessages(library(pheatmap))
+
+```
+
+## R Markdown
+
+```{r, Rename channels between batches}
+
+channelRename("C:/AMA/extra/AIMS Consulting LLP/Coc_HIV_Xuans_proj/Flow/batch_corrected/Tr1/CD4/")
+##Fix labeling here in the generated excel file
+channelRename("C:/AMA/extra/AIMS Consulting LLP/Coc_HIV_Xuans_proj/Flow/batch_corrected/IRF_STAT/CD4/")
+
+
+channelRename("C:/AMA/extra/AIMS Consulting LLP/Coc_HIV_Xuans_proj/Flow/batch_corrected/Blimp_TIM")
+#Fix labeling here in the generated excel file
+channelRename("C:/AMA/extra/AIMS Consulting LLP/Coc_HIV_Xuans_proj/Flow/Test_files")
+```
+
+
+```{r, Run from new folder created after renaming}
+
+#get folder which has the two bridge samples fcs files. filename: something something _b1.fcs or _b2.fcs
+dir <- "C:/AMA/extra/AIMS Consulting LLP/Coc_HIV_Xuans_proj/Flow/batch_corrected/Tr1/CD4/control_samples/channel_rename/"
+
+files <- list.files(dir, pattern = "fcs$")
+files
+data <- data.frame(File = files,
+                   Path = file.path(dir, files),
+                   Type = stringr::str_match(files, ".+_.+_(.+)_.+_.+_.+_")[,2],
+                   Batch = stringr::str_match(files, "b([12])")[,1],
+                   stringsAsFactors = FALSE)
+ff_2 <-flowCore::read.FCS(data$Path[1])
+ff <-flowCore::read.FCS(data$Path[2])
+channels <- grep("", flowCore::colnames(ff), value = TRUE)
+channels
+#channels <- c("FJComp-B515-A", "FJComp-B695-A", "FJComp-G575-A", "FJComp-G610-A", "FJComp-G780-A", "FJComp-R670-A", "FJComp-R730-A", "FJComp-R780-A", "FJComp-UV379-A", "FJComp-UV740-A", "FJComp-V450-A", "FJComp-V525-A", "FJComp-V610-A", "FJComp-V670-A", "FJComp-V710-A", "FJComp-V780-A")
+channels <- c("Lag3", "Foxp3", "LAP", "GARP", "SATB1", "PD-1", "CD161", "CD25", "CD49B", "CD45RA", "CD39", "CD127")
+
+#biexp <- biexponentialTransform("BETransform", 
+#                                a = 50, b = 1, c = 50, d = 1, f = 0, w = 0, 
+#                                tol = .Machine$double.eps^0.25, maxit = as.integer(5000))
+#a <- transform(ff_1, transformList(channels, biexp))
+#b <- transform(ff_2, transformList(channels, biexp))
+#write.FCS(a, "a.fcs")
+#write.FCS(b, "b.fcs")
+
+transformList <- flowCore::transformList(channels, cytofTransform)
+transformList.reverse <- flowCore::transformList(channels, cytofTransform.reverse)
+
+model <- CytoNorm.train(files = data$Path,
+                        labels = data$Batch,
+                        channels = channels,
+                        transformList = transformList,
+                        FlowSOM.params = list(nCells = 10000,
+                                              xdim = 15,
+                                              ydim = 15,
+                                              nClus = 10,
+                                              scale = FALSE),
+                        normParams = list(nQ = 101),
+                        seed = 23)
+
+#get folder which has all the other fcs files, filename: something something _b1.fcs or _b2.fcs
+dir_new <- "C:/AMA/extra/AIMS Consulting LLP/Coc_HIV_Xuans_proj/Flow/batch_corrected/Tr1/CD4/channel_rename"
+files_new <- list.files(dir_new, pattern = "fcs$")
+data_new <- data.frame(File = files_new,
+                   Path = file.path(dir_new, files_new),
+                   Type = stringr::str_match(files_new, ".+_.+_(.+)_.+_.+_.+_")[,2],
+                   Batch = stringr::str_match(files_new, "b([12])")[,1],
+                   stringsAsFactors = FALSE)
+
+CytoNorm.normalize(model = model,
+                   files = data_new$Path,
+                   labels = data_new$Batch,
+                   transformList = transformList,
+                   transformList.reverse = transformList.reverse,
+                   outputDir = "C:/AMA/extra/AIMS Consulting LLP/Coc_HIV_Xuans_proj/Flow/batch_corrected/Tr1/CD4/batch",
+                   verbose = TRUE)
+
+```
+
+
